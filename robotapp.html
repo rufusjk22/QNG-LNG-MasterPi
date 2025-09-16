@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MasterPI Controller</title>
+  <style>
+    :root {
+      --bg1: #0f2027;
+      --bg2: #203a43;
+      --bg3: #2c5364;
+      --card: rgba(255,255,255,0.09);
+      --card-border: rgba(255,255,255,0.18);
+      --text: #e8f1f2;
+      --accent: #4fd1c5;
+      --accent-2: #60a5fa;
+      --muted: #a3b3bd;
+      --btn-bg: rgba(255,255,255,0.06);
+      --btn-hover: rgba(255,255,255,0.12);
+      --progress-bg: rgba(255,255,255,0.14);
+      --progress-fill: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: linear-gradient(135deg, var(--bg1), var(--bg2) 50%, var(--bg3));
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+      background-size: 3px 3px;
+      opacity: 0.45;
+    }
+
+    .wrap {
+      min-height: 100%;
+      display: grid;
+      align-content: start;
+    }
+
+    .header {
+      margin: 40px 0 10px 5vw; /* left aligned but not flush to edge */
+    }
+    .header h1 {
+      text-align: center;
+    }
+    .header-controls {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      position: relative;
+      z-index: 20;
+    }
+    .title {
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      margin: 0 0 6px 0;
+      text-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .panel {
+      margin-left: 5vw; /* keep near left side */
+      margin-top: 24px;
+      width: min(560px, 88vw);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(8px);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 180px 1fr 66px;
+      gap: 14px;
+      align-items: center;
+      padding: 10px 8px;
+      border-radius: 12px;
+      transition: background 160ms ease;
+    }
+    .row + .row { margin-top: 8px; }
+    .row:hover { background: rgba(255,255,255,0.05); }
+
+    .btn {
+      appearance: none;
+      border: 1px solid var(--card-border);
+      background: var(--btn-bg);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      transition: transform 120ms ease, background 160ms ease, border-color 160ms ease;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      min-height: 44px; /* iOS minimum touch target */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn:hover { background: var(--btn-hover); }
+    .btn:active { transform: translateY(1px) scale(0.995); }
+    .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+    .progress {
+      position: relative;
+      height: 14px;
+      background: var(--progress-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      background: var(--progress-fill);
+      box-shadow: inset 0 0 10px rgba(255,255,255,0.25);
+      transition: width 0.2s linear;
+    }
+    .percent {
+      text-align: right;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      width: 60px;
+    }
+
+    /* Joystick (D-pad) styles */
+    .joystick {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      width: min(260px, 88vw);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(8px);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      z-index: 10;
+    }
+    .joy-grid {
+      position: relative;
+      width: 200px;
+      height: 200px;
+      margin: 0 auto;
+    }
+    .joy-spacer { display: none; }
+    .joy-btn {
+      position: absolute;
+      appearance: none;
+      border: 1px solid var(--card-border);
+      background: var(--btn-bg);
+      color: var(--text);
+      border-radius: 12px;
+      font-size: 22px;
+      font-weight: 800;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background 160ms ease, border-color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      min-height: 44px; /* iOS minimum touch target */
+    }
+    .joy-btn:hover { background: var(--btn-hover); }
+    .joy-btn:active, .joy-btn.active {
+      transform: translateY(1px) scale(0.995);
+      background: rgba(79,209,197,0.18);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79,209,197,0.18) inset;
+    }
+    
+    /* Prevent stop button from moving when pressed */
+    #joy-center:active, #joy-center.active {
+      transform: translate(-50%, -50%);
+    }
+    .joy-center { 
+      font-size: 14px; 
+      letter-spacing: 0.4px; 
+      text-transform: uppercase;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    
+    .joy-rotate {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    /* Movement buttons positioning */
+    #joy-up {
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    #joy-down {
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    #joy-left {
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    #joy-right {
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    /* Rotate buttons positioning at 45-degree angles */
+    #joy-rotate-left {
+      top: 25px;
+      left: 25px;
+      transform: translate(-50%, -50%);
+    }
+
+    #joy-rotate-right {
+      top: 25px;
+      right: 25px;
+      transform: translate(50%, -50%);
+    }
+
+    /* Servo Controls */
+    .servo-panel {
+      position: fixed;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: min(280px, 25vw);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(8px);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      z-index: 10;
+    }
+
+    .servo-control {
+      margin-bottom: 20px;
+    }
+
+    .servo-control:last-child {
+      margin-bottom: 0;
+    }
+
+    .servo-label {
+      display: block;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.3px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .servo-slider {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--progress-bg);
+      border: 1px solid var(--card-border);
+      outline: none;
+      appearance: none;
+      cursor: pointer;
+      transition: all 160ms ease;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    .servo-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--text);
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: all 160ms ease;
+    }
+
+    .servo-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 12px rgba(79,209,197,0.4);
+    }
+
+    .servo-slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--text);
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .servo-value {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .servo-current {
+      font-weight: 600;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Camera Display */
+    .camera-container {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(640px, 80vw);
+      height: min(480px, 60vh);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(8px);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .camera-feed {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 16px;
+      display: none;
+    }
+
+    .camera-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      text-align: center;
+      padding: 40px;
+    }
+
+    .camera-placeholder-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+
+    .camera-placeholder-text {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .camera-placeholder-subtext {
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    .camera-status {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+    }
+
+    .camera-status.connected {
+      background: rgba(34, 197, 94, 0.8);
+    }
+
+    .camera-status.error {
+      background: rgba(239, 68, 68, 0.8);
+    }
+
+    .camera-control-container {
+      position: fixed;
+      left: 50%;
+      top: calc(50% + 250px);
+      transform: translateX(-50%);
+      z-index: 15;
+    }
+
+    .camera-btn {
+      appearance: none;
+      border: 1px solid var(--card-border);
+      background: var(--btn-bg);
+      color: var(--text);
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      transition: transform 120ms ease, background 160ms ease, border-color 160ms ease;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .camera-btn:hover {
+      background: var(--btn-hover);
+    }
+
+    .camera-btn:active {
+      transform: translateY(1px) scale(0.995);
+    }
+
+    /* Mobile Responsive Design */
+    @media (max-width: 768px) {
+      .header {
+        margin: 20px 0 10px 5vw;
+      }
+      
+      .title {
+        font-size: 32px;
+      }
+      
+      .camera-container {
+        width: min(90vw, 400px);
+        height: min(50vh, 300px);
+        top: 45%;
+      }
+      
+      .camera-control-container {
+        top: calc(45% + 180px);
+      }
+      
+      .camera-btn {
+        padding: 8px 14px;
+        font-size: 13px;
+      }
+      
+      .joystick {
+        width: min(240px, 80vw);
+        padding: 12px;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      
+      .joy-grid {
+        width: 160px;
+        height: 160px;
+      }
+      
+      .joy-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+      }
+      
+      #joy-rotate-left {
+        top: 20px;
+        left: 20px;
+      }
+      
+      #joy-rotate-right {
+        top: 20px;
+        right: 20px;
+      }
+      
+      .servo-panel {
+        position: relative;
+        right: auto;
+        top: auto;
+        transform: none;
+        width: 100%;
+        margin: 20px 5vw 0 5vw;
+        padding: 16px;
+      }
+      
+      .servo-control {
+        margin-bottom: 16px;
+      }
+      
+      .servo-slider {
+        height: 12px;
+      }
+      
+      .servo-slider::-webkit-slider-thumb {
+        width: 24px;
+        height: 24px;
+      }
+      
+      .servo-slider::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .row { grid-template-columns: 1fr; gap: 10px; }
+      .percent { width: 100%; text-align: left; }
+      
+      .header {
+        margin: 15px 0 8px 4vw;
+      }
+      
+      .title {
+        font-size: 28px;
+      }
+      
+      .header-controls {
+        margin-top: 8px;
+      }
+      
+      .btn {
+        padding: 10px 16px;
+        font-size: 14px;
+      }
+      
+      .camera-container {
+        width: 95vw;
+        height: min(45vh, 250px);
+        top: 40%;
+      }
+      
+      .camera-control-container {
+        top: calc(40% + 150px);
+      }
+      
+      .camera-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+      
+      .camera-placeholder {
+        padding: 20px;
+      }
+      
+      .camera-placeholder-icon {
+        font-size: 36px;
+      }
+      
+      .camera-placeholder-text {
+        font-size: 14px;
+      }
+      
+      .camera-placeholder-subtext {
+        font-size: 12px;
+      }
+      
+      .joystick {
+        width: min(200px, 75vw);
+        padding: 10px;
+        bottom: 15px;
+      }
+      
+      .joy-grid {
+        width: 140px;
+        height: 140px;
+      }
+      
+      .joy-btn {
+        width: 35px;
+        height: 35px;
+        font-size: 16px;
+      }
+      
+      #joy-rotate-left {
+        top: 17px;
+        left: 17px;
+      }
+      
+      #joy-rotate-right {
+        top: 17px;
+        right: 17px;
+      }
+      
+      .joy-center {
+        font-size: 12px;
+      }
+      
+      .servo-panel {
+        margin: 15px 4vw 0 4vw;
+        padding: 12px;
+      }
+      
+      .servo-label {
+        font-size: 13px;
+      }
+      
+      .servo-value {
+        font-size: 11px;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .title {
+        font-size: 24px;
+      }
+      
+      .camera-container {
+        height: min(40vh, 200px);
+      }
+      
+      .camera-control-container {
+        top: calc(50% + 120px);
+      }
+      
+      .camera-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+      }
+      
+      .joystick {
+        width: min(180px, 70vw);
+      }
+      
+      .joy-grid {
+        width: 120px;
+        height: 120px;
+      }
+      
+      .joy-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 14px;
+      }
+      
+      #joy-rotate-left {
+        top: 15px;
+        left: 15px;
+      }
+      
+      #joy-rotate-right {
+        top: 15px;
+        right: 15px;
+      }
+    }
+
+    /* Landscape mobile orientation */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .header {
+        margin: 10px 0 5px 5vw;
+      }
+      
+      .title {
+        font-size: 24px;
+        margin-bottom: 4px;
+      }
+      
+      .camera-container {
+        width: min(60vw, 400px);
+        height: min(70vh, 250px);
+        top: 50%;
+      }
+      
+      .camera-control-container {
+        top: calc(50% + 150px);
+      }
+      
+      .camera-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+      
+      .joystick {
+        bottom: 10px;
+        width: min(200px, 30vw);
+      }
+      
+      .joy-grid {
+        width: 140px;
+        height: 140px;
+      }
+      
+      .joy-btn {
+        width: 35px;
+        height: 35px;
+        font-size: 16px;
+      }
+      
+      #joy-rotate-left {
+        top: 17px;
+        left: 17px;
+      }
+      
+      #joy-rotate-right {
+        top: 17px;
+        right: 17px;
+      }
+      
+      .servo-panel {
+        margin: 10px 5vw 0 5vw;
+        padding: 10px;
+      }
+      
+      .servo-control {
+        margin-bottom: 12px;
+      }
+    }
+
+    /* Info Text Box */
+    .info-textbox {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1000;
+      width: 300px;
+      height: 250px;
+    }
+
+    .info-display {
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 12px;
+      resize: none;
+      outline: none;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .info-display::placeholder {
+      color: var(--muted);
+    }
+
+    /* Robot Status Bar */
+    .robot-status-bar {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      width: 200px;
+      height: 60px;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .status-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 16px;
+      gap: 12px;
+      height: 100%;
+    }
+
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #f44336;
+      transition: all 0.3s ease;
+      flex-shrink: 0;
+    }
+
+    .status-indicator.connected {
+      background: #4caf50;
+      box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+    }
+
+    .status-indicator.connecting {
+      background: #ff9800;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    .status-text {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      transform: translateY(-2px);
+    }
+
+    .status-title {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .status-value {
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  
+  <!-- Info Text Box -->
+  <div id="info-textbox" class="info-textbox">
+    <textarea id="info-display" class="info-display" readonly placeholder="Information will appear here..."></textarea>
+  </div>
+  
+  <!-- Robot Status Bar -->
+  <div id="robot-status-bar" class="robot-status-bar">
+    <div class="status-content">
+      <div class="status-indicator" id="status-indicator"></div>
+      <div class="status-text">
+        <div class="status-title">Robot Status</div>
+        <div class="status-value" id="status-value">Disconnected</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="wrap">
+    <header class="header">
+      <h1 class="title">MasterPI Controller</h1>
+    </header>
+
+    <!-- Camera Display -->
+    <div class="camera-container" id="camera-container">
+      <div class="camera-placeholder" id="camera-placeholder">
+        <div class="camera-placeholder-icon">📹</div>
+        <div class="camera-placeholder-text">Camera Not Connected</div>
+        <div class="camera-placeholder-subtext">Click "Enable Camera" to start streaming</div>
+      </div>
+      <img class="camera-feed" id="camera-feed" src="http://10.10.41.39:8080/?action=stream" />
+      <div class="camera-status" id="camera-status">Disconnected</div>
+    </div>
+
+    <!-- Camera Control Button -->
+    <div class="camera-control-container">
+      <button id="enable-camera" class="camera-btn">Enable Camera</button>
+    </div>
+
+    <!-- Joystick (D-pad) -->
+    <section class="joystick" aria-label="Joystick">
+      <div class="joy-grid" id="joystick">
+        <button id="joy-up" class="joy-btn" aria-label="Up" data-dir="MOVE FWD">▲</button>
+        <button id="joy-down" class="joy-btn" aria-label="Down" data-dir="MOVE REV">▼</button>
+        <button id="joy-left" class="joy-btn" aria-label="Left" data-dir="MOVE LEFT">◀</button>
+        <button id="joy-right" class="joy-btn" aria-label="Right" data-dir="MOVE RIGHT">▶</button>
+        <button id="joy-center" class="joy-btn joy-center" aria-label="Stop" data-dir="STOP">STOP</button>
+        <button id="joy-rotate-left" class="joy-btn joy-rotate" aria-label="Rotate Left" data-dir="ROTATE LEFT">↶</button>
+        <button id="joy-rotate-right" class="joy-btn joy-rotate" aria-label="Rotate Right" data-dir="ROTATE RIGHT">↷</button>
+      </div>
+      <div style="margin-top:10px; color: var(--muted); font-size:11px; text-align:center; line-height:1.3; padding:0 8px;">Use WASD keys or tap arrows<br>Q/E for rotate, SPACE to stop</div>
+    </section>
+
+    <!-- Servo Controls -->
+    <section class="servo-panel" aria-label="Servo Controls">
+      <div class="servo-control">
+        <label class="servo-label" for="servo1">Servo 1</label>
+        <input type="range" id="servo1" class="servo-slider" min="-90" max="90" value="0" step="1">
+        <div class="servo-value">
+          <span>-90°</span>
+          <span class="servo-current" id="servo1-value">0°</span>
+          <span>90°</span>
+        </div>
+      </div>
+      
+      <div class="servo-control">
+        <label class="servo-label" for="servo2">Servo 2</label>
+        <input type="range" id="servo2" class="servo-slider" min="-90" max="90" value="0" step="1">
+        <div class="servo-value">
+          <span>-90°</span>
+          <span class="servo-current" id="servo2-value">0°</span>
+          <span>90°</span>
+        </div>
+      </div>
+      
+      <div class="servo-control">
+        <label class="servo-label" for="servo3">Servo 3</label>
+        <input type="range" id="servo3" class="servo-slider" min="-90" max="90" value="0" step="1">
+        <div class="servo-value">
+          <span>-90°</span>
+          <span class="servo-current" id="servo3-value">0°</span>
+          <span>90°</span>
+        </div>
+      </div>
+      
+      <div class="servo-control">
+        <label class="servo-label" for="servo4">Servo 4</label>
+        <input type="range" id="servo4" class="servo-slider" min="-90" max="90" value="0" step="1">
+        <div class="servo-value">
+          <span>-90°</span>
+          <span class="servo-current" id="servo4-value">0°</span>
+          <span>90°</span>
+        </div>
+      </div>
+      
+      <div class="servo-control">
+        <label class="servo-label" for="servo5">Servo 5</label>
+        <input type="range" id="servo5" class="servo-slider" min="-90" max="90" value="0" step="1">
+        <div class="servo-value">
+          <span>-90°</span>
+          <span class="servo-current" id="servo5-value">0°</span>
+          <span>90°</span>
+        </div>
+      </div>
+    </section>
+
+    
+  </div>
+
+  <script>
+    const socket = new WebSocket("ws://10.10.41.39:5000"); // replace with Pi IP
+    let cameraFeed;
+
+  // --- Robot Status Bar ---
+  function updateRobotStatus(status, message) {
+    const indicator = document.getElementById('status-indicator');
+    const statusValue = document.getElementById('status-value');
+    
+    indicator.classList.remove('connected', 'connecting');
+
+    switch(status) {
+      case 'connected':
+        indicator.classList.add('connected');
+        statusValue.textContent = message || 'Connected';
+        break;
+      case 'connecting':
+        indicator.classList.add('connecting');
+        statusValue.textContent = message || 'Connecting...';
+        break;
+      case 'disconnected':
+      default:
+        statusValue.textContent = message || 'Disconnected';
+        break;
+    }
+  }
+
+  // Initialize as disconnected
+  updateRobotStatus('disconnected', 'Disconnected');
+
+  // --- WebSocket Events ---
+  socket.onopen = () => {
+    
+    updateRobotStatus('connected', 'Connected');
+    const infoBox = document.getElementById("info-display");
+    infoBox.value += "[System] Connected to Pi ✅\n";
+  };
+
+  socket.onclose = () => {
+    updateRobotStatus('disconnected', 'Disconnected');
+    const infoBox = document.getElementById("info-display");
+    infoBox.value += "[System] Disconnected ❌\n";
+  };  
+
+  socket.onerror = (err) => {
+    
+    updateRobotStatus('disconnected', 'Error');
+    const infoBox = document.getElementById("info-display");
+    infoBox.value += "[System] Robot not connected, please refresh!\n";
+  };
+
+  socket.onmessage = (event) => {
+   
+    const infoBox = document.getElementById("info-display");
+    infoBox.value += "Pi: " + event.data + "\n";
+    infoBox.scrollTop = infoBox.scrollHeight;
+  };
+
+  // --- Joystick + Keyboard controls ---
+  const joystickEl = document.getElementById('joystick');
+  const joyButtons = {
+    'MOVE FWD': document.getElementById('joy-up'),
+    'MOVE REV': document.getElementById('joy-down'),
+    'MOVE LEFT': document.getElementById('joy-left'),
+    'MOVE RIGHT': document.getElementById('joy-right'),
+    'ROTATE LEFT': document.getElementById('joy-rotate-left'),
+    'ROTATE RIGHT': document.getElementById('joy-rotate-right'),
+    'STOP': document.getElementById('joy-center'),
+  };
+
+  function flashActive(btn) {
+    if (!btn) return;
+    btn.classList.add('active');
+    setTimeout(() => btn.classList.remove('active'), 200);
+  }
+
+  function setButtonActive(btn, isActive) {
+    if (!btn) return;
+    if (isActive) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  }
+
+  function triggerCommand(cmd) {
+    console.log("➡️ Sending command:", cmd);
+    flashActive(joyButtons[cmd]);
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(cmd);
+      const infoBox = document.getElementById("info-display");
+      infoBox.value += "Sent: " + cmd + "\n";
+      infoBox.scrollTop = infoBox.scrollHeight;
+    } else {
+      const infoBox = document.getElementById("info-display");
+      infoBox.value += "[System] Robot not connected; cannot execute command.\n";
+    }
+  }
+
+  // --- Pointer interactions on joystick ---
+  let joystickPointerDown = false;
+
+  function handlePress(cmd) {
+    joystickPointerDown = true;
+    triggerCommand(cmd);
+    setButtonActive(joyButtons[cmd], true);
+  }
+  function handleRelease(cmd) {
+    joystickPointerDown = false;
+    if (cmd) {
+      setButtonActive(joyButtons[cmd], false);
+    }
+  }
+
+  Object.values(joyButtons).forEach(btn => {
+    if (!btn) return;
+    const cmd = btn.getAttribute('data-dir');
+    btn.addEventListener('mousedown', () => handlePress(cmd));
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); handlePress(cmd); }, { passive: false });
+    btn.addEventListener('mouseup', () => handleRelease(cmd));
+    btn.addEventListener('mouseleave', () => handleRelease(cmd));
+    btn.addEventListener('touchend', () => handleRelease(cmd));
+    btn.addEventListener('touchcancel', () => handleRelease(cmd));
+  });
+
+  // --- Keyboard WASD mapping ---
+  const keyToCmd = {
+    'w': 'MOVE FWD',
+    'a': 'MOVE LEFT',
+    's': 'MOVE REV',
+    'd': 'MOVE RIGHT',
+    'q': 'ROTATE LEFT',
+    'e': 'ROTATE RIGHT',
+    'arrowup': 'MOVE FWD',
+    'arrowleft': 'MOVE LEFT',
+    'arrowdown': 'MOVE REV',
+    'arrowright': 'MOVE RIGHT',
+    ' ': 'STOP'
+  };
+
+  const pressedKeys = new Set();
+
+  document.addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase();
+    if (key.startsWith('arrow')) e.preventDefault();
+    if (!(key in keyToCmd)) return;
+    if (joystickPointerDown) return;
+    if (pressedKeys.has(key)) return;
+    pressedKeys.add(key);
+    const cmd = keyToCmd[key];
+    triggerCommand(cmd);
+    setButtonActive(joyButtons[cmd], true);
+  });
+
+  document.addEventListener('keyup', (e) => {
+    const key = e.key.toLowerCase();
+    if (key.startsWith('arrow')) e.preventDefault();
+    pressedKeys.delete(key);
+    const cmd = keyToCmd[key];
+    if (cmd) {
+      setButtonActive(joyButtons[cmd], false);
+    }
+  });
+
+  // --- Servo Controls ---
+  const servoSliders = document.querySelectorAll('.servo-slider');
+  const servoValues = document.querySelectorAll('.servo-current');
+
+  function updateServoValue(slider, valueElement) {
+    const value = parseInt(slider.value);
+    valueElement.textContent = `${value}°`;
+    
+    const servoNumber = slider.id.replace('servo', '');
+    const command = `SERVO ${servoNumber} ${value}`;
+    console.log('➡️ Sending servo command:', command);
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(command);
+      const infoBox = document.getElementById("info-display");
+      infoBox.value += "Sent: " + command + "\n";
+      infoBox.scrollTop = infoBox.scrollHeight;
+    }
+  }
+
+  servoSliders.forEach((slider, index) => {
+    const valueElement = servoValues[index];
+    updateServoValue(slider, valueElement);
+
+    slider.addEventListener('input', () => {
+      updateServoValue(slider, valueElement);
+    });
+    slider.addEventListener('change', () => {
+      updateServoValue(slider, valueElement);
+    });
+  });
+  let cameraEnabled = false;
+
+ // --- Camera setup ---
+  let cameraStream = null;
+  
+
+  function connectCamera() {
+  cameraFeed = document.getElementById('camera-feed');
+  // MJPEG or HTTP stream from Raspberry Pi
+  cameraFeed.src = "http://10.10.41.39:8080/?action=stream"; // change port if different
+  cameraFeed.style.display = 'block';
+  document.getElementById('camera-placeholder').style.display = 'none';
+  document.getElementById('camera-status').textContent = 'Connected';
+  document.getElementById('camera-status').className = 'camera-status connected';
+  document.getElementById('enable-camera').textContent = 'Disable Camera';
+}
+
+  function disconnectCamera() {
+  const cameraFeed = document.getElementById('camera-feed');
+  cameraFeed.src = "";
+  cameraFeed.style.display = 'none';
+  document.getElementById('camera-placeholder').style.display = 'flex';
+  document.getElementById('camera-status').textContent = 'Disconnected';
+  document.getElementById('camera-status').className = 'camera-status';
+  document.getElementById('enable-camera').textContent = 'Enable Camera';
+}
+
+  // Event listener for the button
+  document.getElementById('enable-camera').addEventListener('click', async () => {
+    if (!cameraEnabled) {
+      await connectCamera();
+      cameraEnabled = true;
+    } else {
+      disconnectCamera();
+      cameraEnabled = false;
+    }
+  });
+  /*  const socket=new WebSocket("ws://10.10.41.40:5000");
+    // --- Robot Status Bar ---
+    function updateRobotStatus(status, message) {
+      const indicator = document.getElementById('status-indicator');
+      const statusValue = document.getElementById('status-value');
+      
+      // Remove all status classes
+      indicator.classList.remove('connected', 'connecting');
+      
+      // Add appropriate class and update text
+      switch(status) {
+        case 'connected':
+          indicator.classList.add('connected');
+          statusValue.textContent = message || 'Connected';
+          break;
+        case 'connecting':
+          indicator.classList.add('connecting');
+          statusValue.textContent = message || 'Connecting...';
+          break;
+        case 'disconnected':
+        default:
+          statusValue.textContent = message || 'Disconnected';
+          break;
+      }
+    }
+
+    // Initialize status bar
+    updateRobotStatus('disconnected', 'Disconnected');
+
+    // Duration for simulated command completion (ms)
+    const COMMAND_DURATION_MS = 5000;
+
+    // --- Camera setup ---
+    let cameraStream = null;
+    let cameraFeed = null;
+
+    async function connectCamera() {
+      try {
+        // Request camera access
+        cameraStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          } 
+        });
+        
+        cameraFeed = document.getElementById('camera-feed');
+        cameraFeed.srcObject = cameraStream;
+        cameraFeed.style.display = 'block';
+        
+        // Hide placeholder and show camera feed
+        document.getElementById('camera-placeholder').style.display = 'none';
+        document.getElementById('camera-status').textContent = 'Connected';
+        document.getElementById('camera-status').className = 'camera-status connected';
+        
+        // Update button text
+        document.getElementById('enable-camera').textContent = 'Disable Camera';
+        
+        console.log('Camera: connected');
+      } catch (err) {
+        console.error('Camera connection error:', err);
+        document.getElementById('camera-status').textContent = 'Error';
+        document.getElementById('camera-status').className = 'camera-status error';
+        alert('Failed to connect to camera. Please check permissions and try again.');
+      }
+    }
+
+    function disconnectCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+      
+      if (cameraFeed) {
+        cameraFeed.srcObject = null;
+        cameraFeed.style.display = 'none';
+      }
+      
+      // Show placeholder and update status
+      document.getElementById('camera-placeholder').style.display = 'flex';
+      document.getElementById('camera-status').textContent = 'Disconnected';
+      document.getElementById('camera-status').className = 'camera-status';
+      
+      // Update button text
+      document.getElementById('enable-camera').textContent = 'Enable Camera';
+    }
+
+    // Bind enable camera button
+    document.getElementById('enable-camera').addEventListener('click', () => {
+      if (cameraStream) {
+        disconnectCamera();
+      } else {
+        connectCamera();
+      }
+    });
+
+    // --- Joystick + Keyboard controls ---
+    const joystickEl = document.getElementById('joystick');
+    const joyButtons = {
+      'MOVE FWD': document.getElementById('joy-up'),
+      'MOVE REV': document.getElementById('joy-down'),
+      'MOVE LEFT': document.getElementById('joy-left'),
+      'MOVE RIGHT': document.getElementById('joy-right'),
+      'ROTATE LEFT': document.getElementById('joy-rotate-left'),
+      'ROTATE RIGHT': document.getElementById('joy-rotate-right'),
+      'STOP': document.getElementById('joy-center'),
+    };
+
+    function flashActive(btn) {
+      if (!btn) return;
+      btn.classList.add('active');
+      setTimeout(() => btn.classList.remove('active'), 200);
+    }
+
+    function setButtonActive(btn, isActive) {
+      if (!btn) return;
+      if (isActive) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+
+    function triggerCommand(cmd) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(cmd);
+        const infoBox = document.getElementById("info-display");
+        infoBox.value += "Sent: " + cmd + "\n";
+        infoBox.scrollTop = infoBox.scrollHeight;  // Send to Pi
+      }
+    }
+
+    // Pointer interactions on joystick
+    let joystickPointerDown = false;
+
+    function handlePress(cmd) {
+      joystickPointerDown = true;
+      triggerCommand(cmd);
+      setButtonActive(joyButtons[cmd], true);
+    }
+    function handleRelease(cmd) {
+      joystickPointerDown = false;
+      if (cmd) {
+        setButtonActive(joyButtons[cmd], false);
+      }
+    }
+
+    Object.values(joyButtons).forEach(btn => {
+      if (!btn) return;
+      const cmd = btn.getAttribute('data-dir');
+      btn.addEventListener('mousedown', () => handlePress(cmd));
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); handlePress(cmd); }, { passive: false });
+      btn.addEventListener('mouseup', () => handleRelease(cmd));
+      btn.addEventListener('mouseleave', () => handleRelease(cmd));
+      btn.addEventListener('touchend', () => handleRelease(cmd));
+      btn.addEventListener('touchcancel', () => handleRelease(cmd));
+    });
+
+    // Keyboard WASD mapping when joystick is not being pressed
+    const keyToCmd = {
+      'w': 'MOVE FWD',
+      'a': 'MOVE LEFT',
+      's': 'MOVE REV',
+      'd': 'MOVE RIGHT',
+      'q': 'ROTATE LEFT',
+      'e': 'ROTATE RIGHT',
+      'arrowup': 'MOVE FWD',
+      'arrowleft': 'MOVE LEFT',
+      'arrowdown': 'MOVE REV',
+      'arrowright': 'MOVE RIGHT',
+      ' ': 'STOP'
+    };
+
+    const pressedKeys = new Set();
+
+    document.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      if (key.startsWith('arrow')) e.preventDefault();
+      if (!(key in keyToCmd)) return;
+      if (joystickPointerDown) return; // ignore while pointer active on joystick
+      if (pressedKeys.has(key)) return; // avoid repeat while held
+      pressedKeys.add(key);
+      const cmd = keyToCmd[key];
+      triggerCommand(cmd);
+      setButtonActive(joyButtons[cmd], true);
+    });
+
+    document.addEventListener('keyup', (e) => {
+      const key = e.key.toLowerCase();
+      if (key.startsWith('arrow')) e.preventDefault();
+      pressedKeys.delete(key);
+      const cmd = keyToCmd[key];
+      if (cmd) {
+        setButtonActive(joyButtons[cmd], false);
+      }
+    });
+
+    // --- Servo Controls ---
+    const servoSliders = document.querySelectorAll('.servo-slider');
+    const servoValues = document.querySelectorAll('.servo-current');
+
+    function updateServoValue(slider, valueElement) {
+      const value = parseInt(slider.value);
+      valueElement.textContent = `${value}°`;
+      
+      // Log servo command (can be extended to send to Pi via WebSocket or other method)
+      const servoNumber = slider.id.replace('servo', '');
+      const command = `SERVO ${servoNumber} ${value}`;
+      console.log('Servo command:', command);
+    }
+
+    // Initialize servo controls
+    servoSliders.forEach((slider, index) => {
+      const valueElement = servoValues[index];
+      
+      // Set initial value display
+      updateServoValue(slider, valueElement);
+      
+      // Add event listeners
+      slider.addEventListener('input', () => {
+        updateServoValue(slider, valueElement);
+      });
+      
+      slider.addEventListener('change', () => {
+        updateServoValue(slider, valueElement);
+      });
+    });
+    */
+
+  </script>
+</body>
+</html>
+</html>
